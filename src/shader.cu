@@ -1,0 +1,3 @@
+extern "C" __global__ void __raygen__() {
+    // A dummy function first to make compiler happy...
+}
