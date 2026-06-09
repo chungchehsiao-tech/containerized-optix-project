@@ -1,0 +1,50 @@
+# Exclude local environment variables
+.env
+*.env
+
+# Exclude git and CI/CD pipeline folders
+.git/
+.github/
+
+# Exclude CMake local build/output directories, cache, and configuration files
+build/
+out/
+bin/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# Exclude the OptiX SDK dependency to follow EULA policy
+deps/
+
+# Exclude compiled artifacts if they are out of build/ for Optix/CUDA and C/C++
+*.ptx
+*.optixir
+*.o
+*.so
+*.a
+*.exe
+
+# Exclude Python generated file and folder
+__pycache__/
+*.pyc
+venv/
+
+# Exclude the crash logs and core files
+*.log
+core
+core.*
+vgcore.*
+
+# Exclude local documentation or heavy assets not needed for the build
+docs/
+*.md
+# (Add any heavy textures/3D models here if they aren't needed for compile time in the future)
+
+# Exclude IDE / other OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

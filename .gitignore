@@ -1,0 +1,45 @@
+# Local environment variables
+.env
+*.env
+
+# Build directories, and possible cache/configuration files from CMake 
+/build/
+/out/
+/bin/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# OptiX / CUDA specific artifacts, SDK folder
+deps/
+*.ptx
+*.optixir
+*.cubin
+*.fatbin
+
+# C/C++ Object files and libraries
+*.o
+*.obj
+*.so
+*.dll
+*.a
+*.lib
+
+# Python generated files
+__pycache__/
+*.pyc
+venv/
+
+# Exclude the crash logs and core files
+*.log
+core
+core.*
+vgcore.*
+
+# IDEs and other OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
