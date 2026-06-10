@@ -15,8 +15,9 @@ CMakeFiles/
 Makefile
 cmake_install.cmake
 
-# Exclude the OptiX SDK dependency to follow EULA policy
-deps/
+# Exclude the OptiX SDK, only allow the OptiX headers we need for the build to keep build fast
+deps/*
+!deps/OptiX_SDK_7.2/include/
 
 # Exclude compiled artifacts if they are out of build/ for Optix/CUDA and C/C++
 *.ptx
