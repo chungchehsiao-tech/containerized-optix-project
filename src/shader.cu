@@ -1,4 +1,5 @@
 #include <optix.h>
+#include <stdint.h>
 #include "LaunchParams.h"
 
 // -----------------------------------------------------------------------------

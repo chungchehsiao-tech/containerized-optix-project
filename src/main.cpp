@@ -4,6 +4,9 @@
 #include <optix.h>
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
+#include <fstream>
+#include <sstream>
+#include <vector>
 
 // -----------------------------------------------------------------------------
 // ERROR HANDLING MACROS
@@ -64,6 +67,84 @@ int main() {
     OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &optix_context));
 
     std::cout << "[SUCCESS] OptiX Device Context created successfully! The CPU is talking to the GPU.\n";
+
+    std::cout << "Building OptiX Pipeline...\n";
+
+    //Setup Pipeline Options
+    OptixPipelineCompileOptions pipelineCompileOptions = {};
+    pipelineCompileOptions.usesMotionBlur        = false;
+    pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+    pipelineCompileOptions.numPayloadValues      = 2;
+    pipelineCompileOptions.numAttributeValues    = 2;
+    pipelineCompileOptions.exceptionFlags        = OPTIX_EXCEPTION_FLAG_DEBUG; 
+    pipelineCompileOptions.pipelineLaunchParamsVariableName = "optixLaunchParams";
+
+    // Setup Module Options
+    OptixModuleCompileOptions moduleCompileOptions = {};
+    moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+    moduleCompileOptions.optLevel         = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+    moduleCompileOptions.debugLevel       = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
+
+    // Read PTX File 
+    std::string ptx_path = std::string(PTX_DIR) + "/shader.ptx";
+    std::ifstream ptx_file(ptx_path);
+
+    if (!ptx_file.good()) {
+        std::cerr << "ERROR: Could not open PTX file. Did CMake build it?\n";
+        exit(1);
+    }
+
+    std::stringstream ptx_buffer;
+    ptx_buffer << ptx_file.rdbuf();
+    std::string ptx_source = ptx_buffer.str();
+
+    // Create the Module 
+    OptixModule module = nullptr;
+    OPTIX_CHECK(optixModuleCreateFromPTX(
+        optix_context,
+        &moduleCompileOptions,
+        &pipelineCompileOptions,
+        ptx_source.c_str(),
+        ptx_source.size(),
+        nullptr, nullptr,
+        &module
+    ));
+
+    //Create Program Group (Raygen)
+    OptixProgramGroupOptions pgOptions = {};
+    OptixProgramGroupDesc raygenDesc = {};
+    raygenDesc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+    raygenDesc.raygen.module            = module;
+    raygenDesc.raygen.entryFunctionName = "__raygen__renderFrame";
+
+    OptixProgramGroup raygenProgramGroup = nullptr;
+    OPTIX_CHECK(optixProgramGroupCreate(
+        optix_context,
+        &raygenDesc,
+        1,             // Number of program groups
+        &pgOptions,
+        nullptr, nullptr,
+        &raygenProgramGroup
+    ));
+
+    //Link the Pipeline
+    OptixPipelineLinkOptions pipelineLinkOptions = {};
+    pipelineLinkOptions.maxTraceDepth = 1;
+    pipelineLinkOptions.debugLevel    = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+
+    OptixPipeline pipeline = nullptr;
+    OPTIX_CHECK(optixPipelineCreate(
+        optix_context,
+        &pipelineCompileOptions,
+        &pipelineLinkOptions,
+        &raygenProgramGroup,
+        1,             // Number of program groups
+        nullptr, nullptr,
+        &pipeline
+    ));
+
+    std::cout << "[SUCCESS] OptiX Pipeline Built!\n";
+
 
     // Clean up memory before exiting
     optixDeviceContextDestroy(optix_context);
