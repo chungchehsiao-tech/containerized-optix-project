@@ -37,4 +37,4 @@ target_include_directories(OptixApp PRIVATE ${OPTIX_INCLUDE_DIR})
 
 # Find the CUDA Toolkit to link the CUDA Runtime (cudart) for host memory management
 find_package(CUDAToolkit REQUIRED)
-target_link_libraries(OptixApp PRIVATE CUDA::cudart)
+target_link_libraries(OptixApp PRIVATE CUDA::cudart_static)
