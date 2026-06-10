@@ -37,9 +37,9 @@ RUN cmake -B build -DOPTIX_INCLUDE_DIR=/app/deps/Optix_SDK_7.2/include -DCMAKE_B
 RUN cmake --build build --config Release
 
 # ==============================================================================
-# STAGE 2: Runtime
+# STAGE 2: Runtime (Slim, ~300MB version)
 # ==============================================================================
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:11.8.0-base-ubuntu22.04
 
 WORKDIR /app
 
