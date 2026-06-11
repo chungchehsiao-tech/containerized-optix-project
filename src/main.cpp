@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include "LaunchParams.h"
 
 // -----------------------------------------------------------------------------
 // ERROR HANDLING MACROS
@@ -39,6 +40,15 @@
 static void context_log_cb(unsigned int level, const char* tag, const char* message, void* /*cbdata */) {
     std::cerr << "[" << std::setw(2) << level << "][" << std::setw(12) << tag << "]: " << message << "\n";
 }
+
+
+// OptiX requires a specific aligned struct to hold shader headers
+    template <typename T>
+    struct __align__(OPTIX_SBT_RECORD_ALIGNMENT) SbtRecord {
+        char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+        T data; // Empty for now, used for materials later
+    };
+    typedef SbtRecord<int> RaygenRecord;
 
 // -----------------------------------------------------------------------------
 // MAIN PROGRAM
@@ -110,24 +120,32 @@ int main() {
         &module
     ));
 
-    //Create Program Group (Raygen)
+    // Create Program Groups (Raygen, Miss, Hitgroup)
     OptixProgramGroupOptions pgOptions = {};
-    OptixProgramGroupDesc raygenDesc = {};
+    OptixProgramGroup programGroups[3]; // We now need 3 programs!
+
+    // Raygen Program
+    OptixProgramGroupDesc raygenDesc    = {};
     raygenDesc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
     raygenDesc.raygen.module            = module;
     raygenDesc.raygen.entryFunctionName = "__raygen__renderFrame";
+    OPTIX_CHECK(optixProgramGroupCreate(optix_context, &raygenDesc, 1, &pgOptions, nullptr, nullptr, &programGroups[0]));
 
-    OptixProgramGroup raygenProgramGroup = nullptr;
-    OPTIX_CHECK(optixProgramGroupCreate(
-        optix_context,
-        &raygenDesc,
-        1,             // Number of program groups
-        &pgOptions,
-        nullptr, nullptr,
-        &raygenProgramGroup
-    ));
+    // Miss Program
+    OptixProgramGroupDesc missDesc      = {};
+    missDesc.kind                       = OPTIX_PROGRAM_GROUP_KIND_MISS;
+    missDesc.miss.module                = module;
+    missDesc.miss.entryFunctionName     = "__miss__dummy";
+    OPTIX_CHECK(optixProgramGroupCreate(optix_context, &missDesc, 1, &pgOptions, nullptr, nullptr, &programGroups[1]));
 
-    //Link the Pipeline
+    // Hitgroup Program
+    OptixProgramGroupDesc hitgroupDesc  = {};
+    hitgroupDesc.kind                   = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+    hitgroupDesc.hitgroup.moduleCH            = module;
+    hitgroupDesc.hitgroup.entryFunctionNameCH = "__closesthit__dummy";
+    OPTIX_CHECK(optixProgramGroupCreate(optix_context, &hitgroupDesc, 1, &pgOptions, nullptr, nullptr, &programGroups[2]));
+
+    // 6. Link the Pipeline
     OptixPipelineLinkOptions pipelineLinkOptions = {};
     pipelineLinkOptions.maxTraceDepth = 1;
     pipelineLinkOptions.debugLevel    = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
@@ -137,14 +155,131 @@ int main() {
         optix_context,
         &pipelineCompileOptions,
         &pipelineLinkOptions,
-        &raygenProgramGroup,
-        1,             // Number of program groups
+        programGroups,
+        3,             // <--- Tell the pipeline to link all 3 programs
         nullptr, nullptr,
         &pipeline
     ));
 
     std::cout << "[SUCCESS] OptiX Pipeline Built!\n";
 
+    // -------------------------------------------------------------------------
+    // MEMORY ALLOCATION 
+    // -------------------------------------------------------------------------
+    std::cout << "Allocating memory\n";
+    int width = 1920;
+    int height = 1080;
+
+    // Allocate the blank image canvas on the GPU
+    uchar4* d_resultBuffer = nullptr;
+    CUDA_CHECK(cudaMalloc(&d_resultBuffer, width * height * sizeof(uchar4)));
+
+    // Create the LaunchParams on the CPU, and fill it with our data
+    LaunchParams hostParams = {};
+    hostParams.width = width;
+    hostParams.height = height;
+    hostParams.resultBuffer = d_resultBuffer;
+
+    // Allocate memory for the LaunchParams on the GPU, and copy it over
+    CUdeviceptr d_launchParams = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_launchParams), sizeof(LaunchParams)));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(d_launchParams),
+        &hostParams,
+        sizeof(LaunchParams),
+        cudaMemcpyHostToDevice
+    ));
+
+    // -------------------------------------------------------------------------
+    // SHADER BINDING TABLE (SBT)
+    // -------------------------------------------------------------------------
+
+    typedef SbtRecord<int> EmptyRecord;
+
+    // Raygen Record
+    EmptyRecord rgSbtRecord = {};
+    OPTIX_CHECK(optixSbtRecordPackHeader(programGroups[0], &rgSbtRecord));
+    CUdeviceptr d_raygenRecord = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_raygenRecord), sizeof(EmptyRecord)));
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_raygenRecord), &rgSbtRecord, sizeof(EmptyRecord), cudaMemcpyHostToDevice));
+
+    // Dummy Miss Record
+    EmptyRecord msSbtRecord = {};
+    OPTIX_CHECK(optixSbtRecordPackHeader(programGroups[1], &msSbtRecord));
+    CUdeviceptr d_missRecord = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missRecord), sizeof(EmptyRecord)));
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_missRecord), &msSbtRecord, sizeof(EmptyRecord), cudaMemcpyHostToDevice));
+
+    // Dummy Hitgroup Record
+    EmptyRecord hgSbtRecord = {};
+    OPTIX_CHECK(optixSbtRecordPackHeader(programGroups[2], &hgSbtRecord));
+    CUdeviceptr d_hitgroupRecord = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroupRecord), sizeof(EmptyRecord)));
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_hitgroupRecord), &hgSbtRecord, sizeof(EmptyRecord), cudaMemcpyHostToDevice));
+
+    // Hand the memory pointers to the OptiX API
+    OptixShaderBindingTable sbt = {};
+    
+    sbt.raygenRecord                = d_raygenRecord;
+    sbt.missRecordBase              = d_missRecord;
+    sbt.missRecordStrideInBytes     = sizeof(EmptyRecord);
+    sbt.missRecordCount             = 1;
+    
+    sbt.hitgroupRecordBase          = d_hitgroupRecord;
+    sbt.hitgroupRecordStrideInBytes = sizeof(EmptyRecord);
+    sbt.hitgroupRecordCount         = 1;
+    
+    // -------------------------------------------------------------------------
+    // LAUNCH THREADS
+    // -------------------------------------------------------------------------
+    std::cout << "Shooting Rays...\n";
+    
+    // Create an asynchronous CUDA execution queue
+    CUstream stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
+
+    OPTIX_CHECK(optixLaunch(
+        pipeline,
+        stream,
+        d_launchParams,
+        sizeof(LaunchParams),
+        &sbt,
+        width,    // Launch width  (X)
+        height,   // Launch height (Y)
+        1         // Launch depth  (Z - just 1 for flat images)
+    ));
+
+    // Force the CPU to wait until the GPU finishes tracing all rays
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    // -------------------------------------------------------------------------
+    // IMAGE RETRIEVAL FROM BUFFER & SAVING
+    // -------------------------------------------------------------------------
+    std::cout << "Downloading image from GPU...\n";
+    
+    // Create an empty CPU array to hold the image
+    std::vector<uchar4> host_pixels(width * height);
+
+    // Download the VRAM buffer back across the PCIe bus to CPU RAM
+    CUDA_CHECK(cudaMemcpy(
+        host_pixels.data(),
+        d_resultBuffer,
+        width * height * sizeof(uchar4),
+        cudaMemcpyDeviceToHost
+    ));
+
+    // To guarantee zero external dependencies, we use the raw PPM image format.
+    std::cout << "Saving image to output.ppm...\n";
+    std::ofstream file("output.ppm");
+    file << "P3\n" << width << " " << height << "\n255\n"; // PPM Header
+    for (int i = 0; i < width * height; ++i) {
+        file << (int)host_pixels[i].x << " " 
+             << (int)host_pixels[i].y << " " 
+             << (int)host_pixels[i].z << "\n";
+    }
+    file.close();
+
+    std::cout << "[SUCCESS] Image successfully rendered and saved to the project folder!\n";
 
     // Clean up memory before exiting
     optixDeviceContextDestroy(optix_context);

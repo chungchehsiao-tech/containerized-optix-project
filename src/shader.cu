@@ -8,6 +8,21 @@
 extern "C" __constant__ LaunchParams optixLaunchParams;
 
 // -----------------------------------------------------------------------------
+// MISS PROGRAM (Triggered if a ray hits absolutely nothing)
+// -----------------------------------------------------------------------------
+extern "C" __global__ void __miss__dummy() {
+    // a dummy function makes the program happy, need to write the sky box/background color here later.
+}
+
+// -----------------------------------------------------------------------------
+// CLOSEST HIT PROGRAM (Triggered when a ray hits)
+// -----------------------------------------------------------------------------
+extern "C" __global__ void __closesthit__dummy() {
+    // a dummy function makes the program happy, calculate lighting, shadows, and materials here later.
+}
+
+
+// -----------------------------------------------------------------------------
 // RAY GENERATION PROGRAM
 // Entry point. One thread per pixel.
 // -----------------------------------------------------------------------------
