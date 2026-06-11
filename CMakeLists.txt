@@ -30,11 +30,53 @@ target_include_directories(DeviceCode PRIVATE ${OPTIX_INCLUDE_DIR})
 # ------------------------------------------------------------------
 # 3. HOST CODE (C++ Executable)
 # ------------------------------------------------------------------
+
+# Define output to go inside build folder
+set(PTX_OUTPUT_DIR "${CMAKE_BINARY_DIR}/ptx")
+file(MAKE_DIRECTORY ${PTX_OUTPUT_DIR})
+
+# Force the path to strictly use forward slashes, escaping it for Windows
+file(TO_CMAKE_PATH "${PTX_OUTPUT_DIR}" SAFE_PTX_PATH)
+set(PTX_FILE "${PTX_OUTPUT_DIR}/shader.ptx")
+
 add_executable(OptixApp src/main.cpp)
+
+# The absolute path of the PTX folder directly into the C++ code
+target_compile_definitions(OptixApp PRIVATE "PTX_DIR=\"${PTX_OUTPUT_DIR}\"")
 
 # Give the host code access to the OptiX headers
 target_include_directories(OptixApp PRIVATE ${OPTIX_INCLUDE_DIR})
 
+# ------------------------------------------------------------------------------
+# OPTIX PTX COMPILATION
+# Force the NVIDIA compiler to generate PTX assembly for our shaders.
+# ------------------------------------------------------------------------------
+
+
+
+set(PTX_FILE "${PTX_OUTPUT_DIR}/shader.ptx")
+
+# Create the exact terminal command to compile the shader
+add_custom_command(
+    OUTPUT ${PTX_FILE}
+    COMMAND ${CMAKE_CUDA_COMPILER} 
+            -ptx                               # Stop at PTX assembly
+            -lineinfo                          # for Nsight Debugging
+            -I${CMAKE_SOURCE_DIR}/src          # Tell it where LaunchParams.h is
+            -I${OPTIX_INCLUDE_DIR}             # Tell it where optix.h is
+            ${CMAKE_SOURCE_DIR}/src/shader.cu  # The file to compile
+            -o ${PTX_FILE}                     # Where to save it
+    DEPENDS ${CMAKE_SOURCE_DIR}/src/shader.cu
+            ${CMAKE_SOURCE_DIR}/src/LaunchParams.h
+    COMMENT "Compiling shader.cu to PTX..."
+)
+
+# Create a fake "Target" to hold
+add_custom_target(CompilePTX DEPENDS ${PTX_FILE})
+
+# Force main C++ program to wait for the PTX to finish building
+add_dependencies(OptixApp CompilePTX)
+
 # Find the CUDA Toolkit to link the CUDA Runtime (cudart) for host memory management
 find_package(CUDAToolkit REQUIRED)
-target_link_libraries(OptixApp PRIVATE CUDA::cudart)
+target_link_libraries(OptixApp PRIVATE CUDA::cudart_static)

@@ -33,7 +33,7 @@ RUN if [ ! -f "/app/deps/OptiX_SDK_7.2/include/optix.h" ]; then \
     fi
 
 # Configure and Build
-RUN cmake -B build -DOPTIX_INCLUDE_DIR=/app/deps/Optix_SDK_7.2/include -DCMAKE_BUILD_TYPE=Release
+RUN cmake -B build -DOPTIX_INCLUDE_DIR=/app/deps/OptiX_SDK_7.2/include -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build build --config Release
 
 # ==============================================================================
