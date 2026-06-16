@@ -2,6 +2,7 @@
 #include <optix.h>
 #include <vector>
 #include <optix_stubs.h>
+
 #include <fstream>
 #include <sstream>
 #include "../LaunchParams.h"
@@ -28,8 +29,17 @@ private:
     OptixPipeline      pipeline      = nullptr;
     CUstream           stream        = 0;
 
+    // Create Program Groups (Raygen, Miss, Hitgroup)
+    OptixProgramGroupOptions pgOptions = {};
+    OptixProgramGroup programGroups[3]; // We now need 3 programs!
+
     CUdeviceptr        d_launchParams = 0;
     // Allocate the blank image canvas on the GPU
     uchar4* d_resultBuffer = nullptr;
     OptixShaderBindingTable sbt = {};
+
+    // For simple project we fix the size in this scope
+    // May wish to make size change adjustable later
+    int width  = 1920;
+    int height = 1080;
 };

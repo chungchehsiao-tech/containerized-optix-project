@@ -1,5 +1,6 @@
 #include "../util/Logger.h"
 #include "OptiXRenderer.h"
+#include <optix_function_table_definition.h>
 #include <iostream>
 
 // OptiX requires a specific aligned struct to hold shader headers
@@ -9,15 +10,6 @@
         T data; // Empty for now, used for materials later
     };
     typedef SbtRecord<int> RaygenRecord;
-
-// Create Program Groups (Raygen, Miss, Hitgroup)
-    OptixProgramGroupOptions pgOptions = {};
-    OptixProgramGroup programGroups[3]; // We now need 3 programs!
-
-// For simple project we fix the size in this scope
-// May wish to make size change adjustable later
-int width = 1920;
-int height = 1080;
 
 /* CUDA, OptiX initiate and Context create */
 OptixRenderer::OptixRenderer() { 
@@ -40,14 +32,14 @@ OptixRenderer::OptixRenderer() {
     options.logCallbackLevel    = 4; // 4 captures everything up to standard warnings
     
     CUcontext cu_ctx = 0; // Using the primary CUDA context
-    //OptixDeviceContext optix_context = nullptr;
+
     OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &optix_context));
 
     std::cout << "[SUCCESS] OptiX Device Context created successfully! The CPU is talking to the GPU.\n";
 
 }
 
-/* Load PTX, Create Programs, Link Pipeline */
+// Load PTX, Create Programs, Link Pipeline
 void OptixRenderer::buildPipeline() { 
     std::cout << "Building OptiX Pipeline...\n";
 
@@ -91,8 +83,6 @@ void OptixRenderer::buildPipeline() {
         &module
     ));
 
-    
-
     // Raygen Program
     OptixProgramGroupDesc raygenDesc    = {};
     raygenDesc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
@@ -133,11 +123,11 @@ void OptixRenderer::buildPipeline() {
     std::cout << "[SUCCESS] OptiX Pipeline Built!\n";
 }
 
-/* Pack SbtRecords and cudaMemcpy to VRAM */ 
+// -------------------------------------------------------------------------
+// SHADER BINDING TABLE (SBT)
+// -------------------------------------------------------------------------
+
 void OptixRenderer::buildSBT() { 
-    // -------------------------------------------------------------------------
-    // SHADER BINDING TABLE (SBT)
-    // -------------------------------------------------------------------------
 
     typedef SbtRecord<int> EmptyRecord;
 
@@ -176,15 +166,14 @@ void OptixRenderer::buildSBT() {
 
 }
 
+// -------------------------------------------------------------------------
+// MEMORY ALLOCATION 
+// -------------------------------------------------------------------------
 void OptixRenderer::bufferAlloc(){
-    // -------------------------------------------------------------------------
-    // MEMORY ALLOCATION 
-    // -------------------------------------------------------------------------
+
     std::cout << "Allocating memory\n";
-    
 
     // Allocate the blank image canvas on the GPU
-    //uchar4* d_resultBuffer = nullptr;
     CUDA_CHECK(cudaMalloc(&d_resultBuffer, width * height * sizeof(uchar4)));
 
     // Create the LaunchParams on the CPU, and fill it with our data
@@ -194,7 +183,6 @@ void OptixRenderer::bufferAlloc(){
     hostParams.resultBuffer = d_resultBuffer;
 
     // Allocate memory for the LaunchParams on the GPU, and copy it over
-    //CUdeviceptr d_launchParams = 0;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_launchParams), sizeof(LaunchParams)));
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<void*>(d_launchParams),
@@ -204,11 +192,11 @@ void OptixRenderer::bufferAlloc(){
     ));
 }
 
-/* optixLaunch, cudaStreamSynchronize */ 
+// -------------------------------------------------------------------------
+// LAUNCH THREADS
+// -------------------------------------------------------------------------
 void OptixRenderer::renderFrame() { 
-    // -------------------------------------------------------------------------
-    // LAUNCH THREADS
-    // -------------------------------------------------------------------------
+    
     std::cout << "Shooting Rays...\n";
     
     // Create an asynchronous CUDA execution queue
@@ -229,11 +217,26 @@ void OptixRenderer::renderFrame() {
     // Force the CPU to wait until the GPU finishes tracing all rays
     CUDA_CHECK(cudaStreamSynchronize(stream));
 }
-void OptixRenderer::downloadImage(std::vector<uchar4>& host_pixels) { /* cudaMemcpyDeviceToHost */ }
 
-/* optixDeviceContextDestroy, cudaFree */ 
+
+// -------------------------------------------------------------------------
+// IMAGE RETRIEVAL FROM BUFFER & SAVING
+// -------------------------------------------------------------------------
+void OptixRenderer::downloadImage(std::vector<uchar4>& host_pixels) { 
+
+    std::cout << "Downloading image from GPU...\n";
+    
+    // Download the VRAM buffer back across the PCIe bus to CPU RAM
+    CUDA_CHECK(cudaMemcpy(
+        host_pixels.data(),
+        d_resultBuffer,
+        width * height * sizeof(uchar4),
+        cudaMemcpyDeviceToHost
+    ));
+ }
+
+// Clean up memory before exiting
 OptixRenderer::~OptixRenderer() { 
-    // Clean up memory before exiting
     optixDeviceContextDestroy(optix_context);
     std::cout << "Engine shut down cleanly.\n";
 }
