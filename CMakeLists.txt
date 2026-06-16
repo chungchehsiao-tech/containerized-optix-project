@@ -39,7 +39,10 @@ file(MAKE_DIRECTORY ${PTX_OUTPUT_DIR})
 file(TO_CMAKE_PATH "${PTX_OUTPUT_DIR}" SAFE_PTX_PATH)
 set(PTX_FILE "${PTX_OUTPUT_DIR}/shader.ptx")
 
-add_executable(OptixApp src/main.cpp)
+add_executable(OptixApp 
+src/main.cpp
+src/render/OptiXRenderer.cpp
+)
 
 # The absolute path of the PTX folder directly into the C++ code
 target_compile_definitions(OptixApp PRIVATE "PTX_DIR=\"${PTX_OUTPUT_DIR}\"")
