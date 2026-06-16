@@ -1,7 +1,10 @@
 #pragma once
 #include <optix.h>
 #include <vector>
-#include "../src/LaunchParams.h"
+#include <optix_stubs.h>
+#include <fstream>
+#include <sstream>
+#include "../LaunchParams.h"
 
 class OptixRenderer {
 public:
@@ -11,8 +14,10 @@ public:
 
     // Load PTX, Create Programs, Link Pipeline 
     void buildPipeline(); 
-    // Pack SbtRecords and cudaMemcpy to VRAM
+    // Pack SbtRecords 
     void buildSBT();
+    // Memory allocation for buffers
+    void bufferAlloc();
     //optixLaunch, cudaStreamSynchronize
     void renderFrame();
     // Our image loading from GPU
@@ -24,6 +29,7 @@ private:
     CUstream           stream        = 0;
 
     CUdeviceptr        d_launchParams = 0;
+    // Allocate the blank image canvas on the GPU
     uchar4* d_resultBuffer = nullptr;
     OptixShaderBindingTable sbt = {};
 };
