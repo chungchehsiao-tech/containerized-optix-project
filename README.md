@@ -4,7 +4,7 @@
 ![CUDA](https://img.shields.io/badge/CUDA-10.0+-green.svg)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-blue.svg)
 
-A hardware-accelerated, containerized ray tracing engine built from scratch using C++, CUDA, and the NVIDIA OptiX 7.2 API. This project serves as a structural showcase of modern host-device memory management, Shader Binding Table (SBT) architecture, and reproducible Docker containerization for GPU build environments.
+A hardware-accelerated ray tracing engine featuring a containerized build pipeline built from scratch using C++, CUDA, and the NVIDIA OptiX 7.2 API. This project serves as a structural showcase of modern host-device memory management, Shader Binding Table (SBT) architecture, and reproducible Docker build environments.
 
 ## 🖼️ Render Output
 
@@ -21,20 +21,20 @@ While containerized development is an industry standard, executing the NVIDIA Op
 * **The WSL2 Limitation:** While compute APIs (CUDA) pass through seamlessly, the Windows DirectX Graphics Kernel (Dxgkrnl) bridge often fails to pass the OptiX entry symbols (`libnvoptix.so.1`) to the container OS, resulting in `OptiX Error 7805 (OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND)`.  
 * **The Solution:** We bypass virtualization entirely for execution. Local development relies on the native Windows MSVC compiler via CMake. This ensures the compiled `.exe` has direct access to the host `nvoptix.dll` display driver.  
 
-### 2. Docker Containerization  
+### 2. Containerized Build Pipeline 
 
 **Used for: Automated Build Verification & Cloud Testing in the future**  
 Despite the execution limitation on Windows, this project maintains a multi-stage `Dockerfile`.   
-* **The Linux Usage:** The Docker environment is used strictly as a proof-of-concept. It validates that the C++ host code, CUDA `.ptx` payloads, and CMake targets successfully compile in a clean Linux environment (`nvidia/cuda:11.8.0`).  
+* **The Linux Usage:** The Docker environment is used strictly as a build-verification pipeline. It validates that the C++ host code, CUDA `.ptx` payloads, and CMake targets successfully compile in a clean Linux environment (`nvidia/cuda:11.8.0`). Please note: Execution and rendering have only been tested and verified on a Windows host.  
 * **EULA Compliance:** To adhere to the NVIDIA OptiX 7.2 EULA regarding the redistribution of proprietary SDK headers, the Docker pipeline builds the container only if the local user provides their own copy of the SDK. The Docker image will refuse to build if the SDK is missing.  
-By ensuring the CMake build system targets both legacy local environments (CUDA 10.x) and modern deployment targets (CUDA 11.8), the architecture guarantees forward compatibility.  
+* By ensuring the CMake build system targets both legacy local environments (CUDA 10.x) and modern deployment targets (CUDA 11.8), the architecture guarantees forward compatibility.  
 
 ## 🛠️ Prerequisites  
 
 To run this engine, your host machine requires:  
 1. An NVIDIA GPU with physically active RT Cores (RTX 20-series or newer).  
 2. [NVIDIA Display Drivers](https://www.nvidia.com/Download/index.aspx) installed on the host OS.  
-3. CMake (3.18+) and a C++14 compliant compiler (MSVC for Windows, GCC for Linux).  
+3. CMake (3.28+) and a C++14 compliant compiler (MSVC for Windows, GCC for Linux).  
 4. Docker Desktop (with WSL2 backend if on Windows).  
 5. The NVIDIA OptiX 7.2 SDK (placed in the appropriate directory as expected by CMake).  
 
@@ -48,8 +48,8 @@ cmake --build build --config Debug
 ./build/Debug/OptixApp.exe  
 ```
 
-**For Native Linux Developers:**  
-You may execute the application entirely within the container (as native Linux bypasses the WSL2 virtualization bridge):  
+**For Native Linux Developers (Untested):**  
+While development and rendering were only tested on Windows, the Dockerfile is configured to compile the application in Linux. Theoretically, running the container natively on Linux should bypass the WSL2 virtualization limits and allow OptiX to execute. If you have a native Linux environment, you can attempt to build and run it using:  
 ```bash  
 docker build -t optix-app .  
 docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all optix-app  
